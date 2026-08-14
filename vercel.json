@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/viewer/index.html"
+    },
+    {
+      "src": "/data/(.*)",
+      "dest": "/viewer/data/$1"
+    },
+    {
+      "src": "/vendor/(.*)",
+      "dest": "/viewer/vendor/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/viewer/$1"
+    }
+  ]
+}

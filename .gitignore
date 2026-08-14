@@ -1,0 +1,22 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Temporary Check Files
+scratch_js_check.txt
+temp_check.js
+
+# IDE & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,77 @@
+study_area:
+  name: "Kahramanmaraş - Antakya Urban Core (Turkey)"
+  bbox:
+    min_lat: 36.190
+    max_lat: 36.230
+    min_lon: 36.140
+    max_lon: 36.180
+  center:
+    lat: 36.208
+    lon: 36.160
+
+earthquake_event:
+  id: "usgs_kahramanmaras_2023"
+  name: "2023 Kahramanmaraş Mainshock"
+  magnitude_mw: 7.8
+  epicenter:
+    lat: 37.174
+    lon: 37.032
+    depth_km: 10.0
+  gmpe_model: "AkkarEtAl2014"  # Regional GMPE for Turkey / Mediterranean
+
+building_inventory:
+  default_height_m: 12.0
+  default_structural_type: "CR/LFINF+CDM/H:4-7" # Mid-rise RC frame with infill
+
+fragility_curves:
+  "CR/LFINF+CDM/H:1-3": # Low-rise Reinforced Concrete Frame
+    medians_g:
+      slight: 0.18
+      moderate: 0.32
+      extensive: 0.55
+      collapse: 0.85
+    betas:
+      slight: 0.50
+      moderate: 0.55
+      extensive: 0.60
+      collapse: 0.65
+
+  "CR/LFINF+CDM/H:4-7": # Mid-rise Reinforced Concrete Frame
+    medians_g:
+      slight: 0.15
+      moderate: 0.28
+      extensive: 0.48
+      collapse: 0.75
+    betas:
+      slight: 0.50
+      moderate: 0.55
+      extensive: 0.60
+      collapse: 0.65
+
+  "CR/LFINF+CDM/H:8+": # High-rise Reinforced Concrete Frame
+    medians_g:
+      slight: 0.12
+      moderate: 0.24
+      extensive: 0.42
+      collapse: 0.68
+    betas:
+      slight: 0.50
+      moderate: 0.55
+      extensive: 0.60
+      collapse: 0.65
+
+  "URM/LWAL/H:1-2": # Unreinforced Masonry Bearing Wall
+    medians_g:
+      slight: 0.10
+      moderate: 0.20
+      extensive: 0.35
+      collapse: 0.55
+    betas:
+      slight: 0.55
+      moderate: 0.60
+      extensive: 0.65
+      collapse: 0.70
+
+output:
+  geojson_path: "data/processed/buildings.geojson"
+  validation_path: "data/processed/validation_report.json"

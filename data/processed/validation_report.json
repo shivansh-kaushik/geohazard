@@ -1,0 +1,74 @@
+{
+  "total_buildings_evaluated": 384,
+  "overall_accuracy": 0.7135,
+  "macro_f1_score": 0.3188,
+  "confusion_matrix": {
+    "none": {
+      "none": 0,
+      "slight": 0,
+      "moderate": 0,
+      "extensive": 0,
+      "collapse": 0
+    },
+    "slight": {
+      "none": 0,
+      "slight": 0,
+      "moderate": 22,
+      "extensive": 0,
+      "collapse": 0
+    },
+    "moderate": {
+      "none": 0,
+      "slight": 0,
+      "moderate": 257,
+      "extensive": 0,
+      "collapse": 0
+    },
+    "extensive": {
+      "none": 0,
+      "slight": 0,
+      "moderate": 77,
+      "extensive": 0,
+      "collapse": 11
+    },
+    "collapse": {
+      "none": 0,
+      "slight": 0,
+      "moderate": 0,
+      "extensive": 0,
+      "collapse": 17
+    }
+  },
+  "per_class_metrics": {
+    "none": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "support": 0
+    },
+    "slight": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "support": 22
+    },
+    "moderate": {
+      "precision": 0.7219,
+      "recall": 1.0,
+      "f1_score": 0.8385,
+      "support": 257
+    },
+    "extensive": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "support": 88
+    },
+    "collapse": {
+      "precision": 0.6071,
+      "recall": 1.0,
+      "f1_score": 0.7556,
+      "support": 17
+    }
+  }
+}
