@@ -1468,8 +1468,9 @@ function buildCityScene() {
   sun.shadow.camera.near=1;sun.shadow.camera.far=1200;
   sun.shadow.camera.left=-280;sun.shadow.camera.right=280;
   sun.shadow.camera.top=280;sun.shadow.camera.bottom=-280;
-  cityScene.add(sun);
-  cityScene.add(new THREE.DirectionalLight(0x3366aa,0.4).position.set(-200,150,-150));
+  const fillLight = new THREE.DirectionalLight(0x3366aa, 0.4);
+  fillLight.position.set(-200, 150, -150);
+  cityScene.add(fillLight);
   cityScene.add(new THREE.AxesHelper(50));
 }
 
@@ -1493,8 +1494,8 @@ function getTerrainY(sx, sz) {
   if (!demData) return 0;
   const {rows, cols, lat_min, lat_max, lon_min, lon_max, elevations} = demData;
   // Convert scene coords → geographic coords
-  const lon = REF_LON + sx / (UNITS_PER_KM * KM_PER_DEG * Math.cos(REF_LAT * DEG2RAD));
-  const lat = REF_LAT - sz / (UNITS_PER_KM * KM_PER_DEG);
+  const lon = currentRefLon + sx / (UNITS_PER_KM * KM_PER_DEG * Math.cos(currentRefLat * DEG2RAD));
+  const lat = currentRefLat - sz / (UNITS_PER_KM * KM_PER_DEG);
   // Normalised position in DEM grid
   const rf = Math.max(0, Math.min(rows - 1.001, (lat - lat_min) / (lat_max - lat_min) * (rows - 1)));
   const cf = Math.max(0, Math.min(cols - 1.001, (lon - lon_min) / (lon_max - lon_min) * (cols - 1)));
@@ -2090,7 +2091,7 @@ function buildCity(features) {
     const wLat=Math.max(...lats)-Math.min(...lats);
     const {x:sx,z:sz}=project(cLon,cLat);
     // Building footprint in scene units (UNITS_PER_KM = 100 → 1 unit = 10m)
-    const bw=Math.max(4,wLon*Math.cos(REF_LAT*DEG2RAD)*KM_PER_DEG*UNITS_PER_KM);
+    const bw=Math.max(4,wLon*Math.cos(currentRefLat*DEG2RAD)*KM_PER_DEG*UNITS_PER_KM);
     const bd=Math.max(4,wLat*KM_PER_DEG*UNITS_PER_KM);
     const h=parseFloat(p.height_m)||12;
     const state=p.predicted_damage_state||'none';
@@ -2528,7 +2529,7 @@ function usePipelinePGA() {
 /** Recompute PGA via Akkar 2014 GMPE for local scenarios, or IS 1893 seismic demand for distant quakes. */
 function recomputePGA(){
   const eq=selectedEQ||{lat:37.174,lon:37.032,mag:7.8,depth:10};
-  const cityCenterDist = haversine(REF_LON, REF_LAT, eq.lon, eq.lat);
+  const cityCenterDist = haversine(currentRefLon, currentRefLat, eq.lon, eq.lat);
 
   buildings.forEach((b,i)=>{
     let pga;
@@ -2537,11 +2538,11 @@ function recomputePGA(){
       const zonePGA = { 'Zone V': 0.36, 'Zone IV': 0.24, 'Zone III': 0.16, 'Zone II': 0.10 };
       const baseZ = zonePGA[eq.zone] || (eq.mag >= 7.5 ? 0.36 : eq.mag >= 6.5 ? 0.24 : 0.16);
       const magScale = Math.pow(eq.mag / 7.0, 1.6);
-      const relDist = Math.hypot((b.cLon||REF_LON) - REF_LON, (b.cLat||REF_LAT) - REF_LAT) * KM_PER_DEG;
+      const relDist = Math.hypot((b.cLon||currentRefLon) - currentRefLon, (b.cLat||currentRefLat) - currentRefLat) * KM_PER_DEG;
       pga = Math.min(0.95, Math.max(0.08, baseZ * magScale * (1.05 - relDist * 0.05)));
     } else {
-      const bLon=REF_LON+(b.sx/UNITS_PER_KM/KM_PER_DEG)/Math.cos(REF_LAT*DEG2RAD);
-      const bLat=REF_LAT-(b.sz/UNITS_PER_KM/KM_PER_DEG);
+      const bLon=currentRefLon+(b.sx/UNITS_PER_KM/KM_PER_DEG)/Math.cos(currentRefLat*DEG2RAD);
+      const bLat=currentRefLat-(b.sz/UNITS_PER_KM/KM_PER_DEG);
       const distKm=Math.max(1,haversine(bLon,bLat,eq.lon,eq.lat));
       b.distKm=distKm;
       pga=computePGA(distKm,eq.mag,eq.depth);
