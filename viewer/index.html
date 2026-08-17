@@ -385,6 +385,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
     </div>
 
     <div class="c-pills">
+      <div class="cp"><span class="cl">Seismic Zone</span><span class="cv" style="color:#f59e0b;font-weight:800" id="cZone">Zone III (0.16g)</span></div>
       <div class="cp"><span class="cl">Magnitude</span><span class="cv r" id="cMag">7.8 Mw</span></div>
       <div class="cp"><span class="cl">Mean PGA</span><span class="cv a" id="cPga">0.460 g</span></div>
       <div class="cp"><span class="cl">Buildings</span><span class="cv" id="cBldg">384</span></div>
@@ -404,6 +405,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
     </div>
     <div class="panel">
       <div class="tpanel active" id="panel-stats">
+        <!-- IS 1893:2016 SEISMIC HAZARD ZONE BADGE -->
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:.62rem;font-weight:800;color:#f59e0b">IS 1893:2016 HAZARD ZONE</span>
+            <span class="dbadge" id="sideZoneBadge" style="background:rgba(245,158,11,0.2);color:#f59e0b;border:1px solid #f59e0b">ZONE III (0.16g)</span>
+          </div>
+          <div style="font-size:.58rem;color:var(--muted);margin-top:4px" id="sideZoneMeta">
+            Moderate Damage Risk · Peak Acceleration Z = 0.16g · Importance Factor I = 1.5
+          </div>
+        </div>
+
         <div class="ptitle">📊 Damage Distribution</div>
         <div class="sg">
           <div class="sc sn"><span class="sv" id="cNone">—</span><span class="sl">None</span></div>
@@ -1267,6 +1279,11 @@ function tickGlobePan(dt) {
 function enterCityMode() {
   appMode='city';
 
+  // Safety check: build 3D city immediately if not already built
+  if ((!buildings || buildings.length === 0) && window.DIGITAL_TWIN_DATA?.features?.length > 0) {
+    buildCity(window.DIGITAL_TWIN_DATA.features);
+  }
+
   // Disable globe pan
   globePanActive=false;
   document.getElementById('zoomOverlay').classList.remove('show');
@@ -1298,7 +1315,7 @@ function enterCityMode() {
   cityControls.update();
   cityControls.enabled=true;    // Enable AFTER position is locked in
 
-  // Update city header — use pre-computed pipeline PGA (never override with global EQ distance)
+  // Update city header
   if (selectedEQ) {
     document.getElementById('cMag').textContent=selectedEQ.mag.toFixed(1)+' Mw';
     document.getElementById('cSub').textContent=`${selectedEQ.place} · ${buildings.length} Real OSM Buildings`;
@@ -1306,11 +1323,11 @@ function enterCityMode() {
     document.getElementById('scDepth').value=selectedEQ.depth;
     document.getElementById('scLat').value=selectedEQ.lat;
     document.getElementById('scLon').value=selectedEQ.lon;
+    recomputePGA();
+  } else {
+    usePipelinePGA();
   }
-  // Always use pre-computed pipeline PGA for Antakya study area
-  // (global earthquake epicentre ≠ Antakya epicentre → don't recompute)
-  usePipelinePGA();
-  showToast(`🏙 ${buildings.length} buildings · PGA from Akkar 2014 pipeline`);
+  showToast(`🏙 ${buildings.length} buildings loaded · Seismic simulation active`);
 }
 
 function goToGlobe() {
@@ -1685,6 +1702,12 @@ function launchIITKharagpurTwin() {
     }
     document.getElementById('cSub').textContent = '🏛️ IIT Kharagpur Main Campus · 538 Real OSM Buildings · IS 1893 Zone III (0.16g)';
     document.getElementById('cMag').textContent = '6.8 Mw';
+    const cZoneEl = document.getElementById('cZone');
+    const bZoneEl = document.getElementById('sideZoneBadge');
+    const mZoneEl = document.getElementById('sideZoneMeta');
+    if (cZoneEl) cZoneEl.textContent = 'Zone III (0.16g)';
+    if (bZoneEl) { bZoneEl.textContent = 'ZONE III (0.16g)'; bZoneEl.style.color='#f59e0b'; }
+    if (mZoneEl) mZoneEl.textContent = 'Moderate Damage Risk · Peak Acceleration Z = 0.16g · Importance Factor I = 1.5';
     showToast('🏛️ Launched IIT Kharagpur 3D Twin — 538 Real Campus Buildings!');
   };
 
@@ -2321,15 +2344,24 @@ function cityMouseMove(e){
   mouseC.y=-(e.clientY/window.innerHeight)*2+1;
   rayC.setFromCamera(mouseC,camera);
   const tip=document.getElementById('tooltip');
-  const hits=rayC.intersectObjects(meshes.filter(m=>m.visible));
+  const hits=rayC.intersectObjects(meshes.filter(m=>m.visible), true);
   if(hits.length){
-    const b=hits[0].object.userData;
-    tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';
-    const dc={none:'#10b981',slight:'#f59e0b',moderate:'#f97316',extensive:'#ef4444',collapse:'#f87171'}[b.state]||'#fff';
-    tip.innerHTML=`<strong>${b.id}</strong>Damage: <b style="color:${dc}">${b.state?.toUpperCase()}</b><br>
-      PGA: ${b.pga?.toFixed(3)}g · H: ${b.h?.toFixed(1)}m · T₁: ${b.T1?.toFixed(2)}s<br>
-      <span style="color:#a78bfa;font-size:.65rem">${b.stype}</span>`;
-    canvas3d.style.cursor=movePinMode ? 'crosshair' : 'pointer';
+    let targetObj = hits[0].object;
+    while (targetObj && (!targetObj.userData || !targetObj.userData.id) && targetObj.parent) {
+      targetObj = targetObj.parent;
+    }
+    const b=targetObj?.userData;
+    if (b && b.id) {
+      tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-10)+'px';
+      const dc={none:'#10b981',slight:'#f59e0b',moderate:'#f97316',extensive:'#ef4444',collapse:'#f87171'}[b.state]||'#fff';
+      tip.innerHTML=`<strong>${b.id}</strong>Damage: <b style="color:${dc}">${b.state?.toUpperCase()}</b><br>
+        PGA: ${b.pga?.toFixed(3)}g · H: ${b.h?.toFixed(1)}m · T₁: ${b.T1?.toFixed(2)}s<br>
+        <span style="color:#a78bfa;font-size:.65rem">${b.stype}</span>`;
+      canvas3d.style.cursor=movePinMode ? 'crosshair' : 'pointer';
+    } else {
+      tip.style.display='none';
+      canvas3d.style.cursor=movePinMode ? 'crosshair' : 'default';
+    }
   } else {
     tip.style.display='none';
     canvas3d.style.cursor=movePinMode ? 'crosshair' : 'default';
@@ -2350,23 +2382,26 @@ function cityClick(){
     return;
   }
 
-  const hits=rayC.intersectObjects(meshes.filter(m=>m.visible));
+  const hits=rayC.intersectObjects(meshes.filter(m=>m.visible), true);
   if(hits.length){
-    const mesh=hits[0].object;
-    if(selectedMesh&&selectedMesh!==mesh){
+    let targetObj = hits[0].object;
+    while (targetObj && (!targetObj.userData || !targetObj.userData.id) && targetObj.parent) {
+      targetObj = targetObj.parent;
+    }
+    if(selectedMesh&&selectedMesh!==targetObj){
       if (Array.isArray(selectedMesh.material)) {
         selectedMesh.material.forEach(m => { if (m.emissive) { m.emissive.setHex(0); m.emissiveIntensity = 0; } });
       } else {
         selectedMesh.material.emissive?.setHex(0);selectedMesh.material.emissiveIntensity=0;
       }
     }
-    selectedMesh=mesh;
-    if (Array.isArray(mesh.material)) {
-      mesh.material.forEach(m => { if (m.emissive) { m.emissive.setHex(0x00e5ff); m.emissiveIntensity = 0.35; } });
+    selectedMesh=targetObj;
+    if (Array.isArray(targetObj.material)) {
+      targetObj.material.forEach(m => { if (m.emissive) { m.emissive.setHex(0x00e5ff); m.emissiveIntensity = 0.35; } });
     } else {
-      mesh.material.emissive=new THREE.Color(0x00e5ff);mesh.material.emissiveIntensity=0.35;
+      targetObj.material.emissive=new THREE.Color(0x00e5ff);targetObj.material.emissiveIntensity=0.35;
     }
-    showCard(mesh.userData);
+    showCard(targetObj.userData);
   }
 }
 
@@ -2458,19 +2493,32 @@ function usePipelinePGA() {
   updateStats(); buildGround();
 }
 
-/** Recompute PGA via Akkar 2014 GMPE for a CUSTOM scenario (user-defined epicentre). */
+/** Recompute PGA via Akkar 2014 GMPE for local scenarios, or IS 1893 seismic demand for distant quakes. */
 function recomputePGA(){
   const eq=selectedEQ||{lat:37.174,lon:37.032,mag:7.8,depth:10};
+  const cityCenterDist = haversine(REF_LON, REF_LAT, eq.lon, eq.lat);
+
   buildings.forEach((b,i)=>{
-    const bLon=REF_LON+(b.sx/UNITS_PER_KM/KM_PER_DEG)/Math.cos(REF_LAT*DEG2RAD);
-    const bLat=REF_LAT-(b.sz/UNITS_PER_KM/KM_PER_DEG);
-    const distKm=Math.max(1,haversine(bLon,bLat,eq.lon,eq.lat));
-    b.distKm=distKm;
-    b.pga=parseFloat(b.probs?.pga_pipeline)||computePGA(distKm,eq.mag,eq.depth);
+    let pga;
+    if (cityCenterDist > 300) {
+      // Distant seismic event (e.g. Kutch, Bhuj, India zones): calculate realistic site PGA demand per IS 1893 zone & Mw
+      const zonePGA = { 'Zone V': 0.36, 'Zone IV': 0.24, 'Zone III': 0.16, 'Zone II': 0.10 };
+      const baseZ = zonePGA[eq.zone] || (eq.mag >= 7.5 ? 0.36 : eq.mag >= 6.5 ? 0.24 : 0.16);
+      const magScale = Math.pow(eq.mag / 7.0, 1.6);
+      const relDist = Math.hypot((b.cLon||REF_LON) - REF_LON, (b.cLat||REF_LAT) - REF_LAT) * KM_PER_DEG;
+      pga = Math.min(0.95, Math.max(0.08, baseZ * magScale * (1.05 - relDist * 0.05)));
+    } else {
+      const bLon=REF_LON+(b.sx/UNITS_PER_KM/KM_PER_DEG)/Math.cos(REF_LAT*DEG2RAD);
+      const bLat=REF_LAT-(b.sz/UNITS_PER_KM/KM_PER_DEG);
+      const distKm=Math.max(1,haversine(bLon,bLat,eq.lon,eq.lat));
+      b.distKm=distKm;
+      pga=computePGA(distKm,eq.mag,eq.depth);
+    }
+    b.pga=pga;
     b.state=computeDamageState(b.pga,b.stype);
     if(cityMode==='after'&&meshes[i])meshes[i].material.color.setHex(damageColor(b.state));
   });
-  const mean=buildings.reduce((s,b)=>s+b.pga,0)/buildings.length;
+  const mean=buildings.reduce((s,b)=>s+b.pga,0)/Math.max(1,buildings.length);
   document.getElementById('cPga').textContent=mean.toFixed(3)+' g';
   updateStats();buildGround();
 }
@@ -2482,7 +2530,19 @@ function applyScenario(){
   document.getElementById('cMag').textContent=selectedEQ.mag.toFixed(1)+' Mw';
   recomputePGA();showToast(`▶ Scenario applied: Mw ${selectedEQ.mag}`);
 }
-function selectEQCity(q){selectedEQ=q;document.getElementById('cMag').textContent=q.mag.toFixed(1)+' Mw';recomputePGA();showToast(`🌍 ${q.place} Mw ${q.mag.toFixed(1)}`);}
+function selectEQCity(q){
+  selectedEQ=q;
+  document.getElementById('cMag').textContent=q.mag.toFixed(1)+' Mw';
+  if (selectedEQ.place) {
+    document.getElementById('cSub').textContent=`${selectedEQ.place} · ${buildings.length} Real OSM Buildings`;
+  }
+  recomputePGA();
+  if (q.zone && q.zone.startsWith('Zone')) {
+    showToast(`🇮🇳 ${q.place} (${q.zone}) — Shaking demand active`);
+  } else {
+    showToast(`🌍 ${q.place} Mw ${q.mag.toFixed(1)}`);
+  }
+}
 
 // ── UPLOAD ────────────────────────────────────────────────────────────
 function handleDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)processFile(f);}
@@ -2597,24 +2657,19 @@ animate();
 function bootApp() {
   buildGlobeScene();          // Instantly renders globe on frame 1
   buildCityScene();           // Sets up lights and camera
+
+  // Instantly build 3D city from embedded DIGITAL_TWIN_DATA on frame 1 (no waiting for async fetches!)
+  if (window.DIGITAL_TWIN_DATA?.features?.length > 0) {
+    buildCity(window.DIGITAL_TWIN_DATA.features);
+  }
+
   switchGlobeMode('india');   // Populates India catalog & red/orange/yellow dots on frame 1!
 
   loadCityGeoData().then(() => {
-    if (window.DIGITAL_TWIN_DATA?.features?.length > 0) {
+    if ((!buildings || buildings.length === 0) && window.DIGITAL_TWIN_DATA?.features?.length > 0) {
       buildCity(window.DIGITAL_TWIN_DATA.features);
-    } else {
-      const S=['moderate','moderate','extensive','collapse','slight','none'];
-      const feats=[];let n=1;
-      for(let i=0;i<14;i++) for(let j=0;j<14;j++){
-        if((i*14+j)%7===0)continue;
-        const lo=36.140+j*.003,la=36.190+i*.003,h=8+(i*j*2)%28;
-        feats.push({type:'Feature',
-          geometry:{type:'Polygon',coordinates:[[[lo,la],[lo+.0025,la],[lo+.0025,la+.0025],[lo,la+.0025],[lo,la]]]},
-          properties:{building_id:`syn_${n++}`,height_m:h,pga_g:0.38+Math.random()*.2,
-            predicted_damage_state:S[(i*3+j*5)%S.length],
-            damage_state_probs:{none:.05,slight:.18,moderate:.35,extensive:.25,collapse:.17}}});
-      }
-      buildCity(feats);
+    } else if (buildings.length > 0) {
+      buildGround();
     }
   });
 }
