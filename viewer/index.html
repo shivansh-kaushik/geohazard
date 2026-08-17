@@ -969,22 +969,24 @@ function latLonToVec3(lat, lon, r=1.005) {
   );
 }
 
-// ── EARTHQUAKE MARKERS ON GLOBE ───────────────────────────────────────
+  // ── EARTHQUAKE MARKERS ON GLOBE ───────────────────────────────────────
 function addGlobeMarker(eq) {
-  const pos  = latLonToVec3(eq.lat, eq.lon, 1.012);   // slightly above sphere surface
-  const size = Math.max(0.016, (eq.mag - 4) * 0.006 + 0.012);  // clearly visible size
+  if (!eq || typeof eq.lat !== 'number' || typeof eq.lon !== 'number') return null;
+  const pos  = latLonToVec3(eq.lat, eq.lon, 1.028);   // floating prominently above Earth surface
+  const mag  = typeof eq.mag === 'number' ? eq.mag : 6.0;
+  const size = Math.max(0.024, (mag - 4) * 0.008 + 0.018);  // large, high-visibility 3D marker
 
   // Color by Zone in India mode, or Magnitude in Global mode
   let colHex;
   if (currentGlobeMode === 'india' && eq.zone) {
     colHex = eq.zone === 'Zone V' ? 0xdc2626 : eq.zone === 'Zone IV' ? 0xf97316 : eq.zone === 'Zone III' ? 0xf59e0b : 0x10b981;
   } else {
-    colHex = eq.mag >= 8.5 ? 0xdc2626 : eq.mag >= 7.5 ? 0xef4444 : eq.mag >= 6.5 ? 0xf97316 : 0xf59e0b;
+    colHex = mag >= 8.5 ? 0xdc2626 : mag >= 7.5 ? 0xef4444 : mag >= 6.5 ? 0xf97316 : 0xf59e0b;
   }
 
   // Core sphere
   const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(size, 12, 12),
+    new THREE.SphereGeometry(size, 16, 16),
     new THREE.MeshBasicMaterial({color: colHex})
   );
   mesh.position.copy(pos);
@@ -993,8 +995,8 @@ function addGlobeMarker(eq) {
 
   // Pulsing ring — flat disc facing outward from center
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(size*1.6, size*2.8, 24),
-    new THREE.MeshBasicMaterial({color: colHex, side: THREE.DoubleSide, transparent: true, opacity: 0.7})
+    new THREE.RingGeometry(size*1.6, size*3.2, 24),
+    new THREE.MeshBasicMaterial({color: colHex, side: THREE.DoubleSide, transparent: true, opacity: 0.85})
   );
   ring.position.copy(pos);
   ring.lookAt(0,0,0);
@@ -1004,14 +1006,15 @@ function addGlobeMarker(eq) {
 
   // Glow halo
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(size*2.6, 10, 10),
-    new THREE.MeshBasicMaterial({color: colHex, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false})
+    new THREE.SphereGeometry(size*2.8, 12, 12),
+    new THREE.MeshBasicMaterial({color: colHex, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false})
   );
   glow.position.copy(pos);
   earthGroup.add(glow);
 
-  eqMarkers.push({mesh, ring, glow, eq});
-  return {mesh, ring, glow, eq};
+  const mObj = {mesh, ring, glow, eq};
+  eqMarkers.push(mObj);
+  return mObj;
 }
 
 // ── INDIA SEISMIC HAZARD ZONES & HISTORICAL / LIVE CATALOG (IS 1893:2016) ──
@@ -1117,15 +1120,17 @@ function loadEarthquakes() {
       .then(r => r.json())
       .then(data => {
         clearTimeout(timeoutId);
-        const liveQuakes = (data.features || []).map(f => ({
-          mag: f.properties.mag,
-          yr: new Date(f.properties.time).getFullYear(),
-          place: f.properties.place,
-          lat: f.geometry.coordinates[1],
-          lon: f.geometry.coordinates[0],
-          depth: f.geometry.coordinates[2],
-          zone: assignIndiaZone(f.geometry.coordinates[1], f.geometry.coordinates[0])
-        }));
+        const liveQuakes = (data.features || [])
+          .filter(f => f.geometry && f.geometry.coordinates && f.geometry.coordinates.length >= 2)
+          .map(f => ({
+            mag: f.properties.mag,
+            yr: new Date(f.properties.time).getFullYear(),
+            place: f.properties.place,
+            lat: f.geometry.coordinates[1],
+            lon: f.geometry.coordinates[0],
+            depth: f.geometry.coordinates[2],
+            zone: assignIndiaZone(f.geometry.coordinates[1], f.geometry.coordinates[0])
+          }));
         // Avoid duplicate places
         const existingPlaces = new Set(INDIA_EARTHQUAKES.map(q => q.place));
         const uniqueLive = liveQuakes.filter(q => !existingPlaces.has(q.place));
@@ -1147,15 +1152,17 @@ function loadEarthquakes() {
       .then(r => r.json())
       .then(data => {
         clearTimeout(timeoutId);
-        const quakes = (data.features || []).map(f => ({
-          mag: f.properties.mag,
-          yr: new Date(f.properties.time).getFullYear(),
-          place: f.properties.place,
-          lat: f.geometry.coordinates[1],
-          lon: f.geometry.coordinates[0],
-          depth: f.geometry.coordinates[2],
-          zone: 'Global'
-        }));
+        const quakes = (data.features || [])
+          .filter(f => f.geometry && f.geometry.coordinates && f.geometry.coordinates.length >= 2)
+          .map(f => ({
+            mag: f.properties.mag,
+            yr: new Date(f.properties.time).getFullYear(),
+            place: f.properties.place,
+            lat: f.geometry.coordinates[1],
+            lon: f.geometry.coordinates[0],
+            depth: f.geometry.coordinates[2],
+            zone: 'Global'
+          }));
         allEarthquakesData = quakes;
         renderGlobeEQ(quakes);
       })
@@ -1181,52 +1188,77 @@ function assignIndiaZone(lat, lon) {
 }
 
 function renderGlobeEQ(quakes) {
+  if (!quakes || !Array.isArray(quakes)) quakes = INDIA_EARTHQUAKES;
+
+  // Clear existing markers from earthGroup
   eqMarkers.forEach(m => {
-    earthGroup.remove(m.mesh); earthGroup.remove(m.ring); earthGroup.remove(m.glow);
+    if (m && m.mesh) earthGroup.remove(m.mesh);
+    if (m && m.ring) earthGroup.remove(m.ring);
+    if (m && m.glow) earthGroup.remove(m.glow);
   });
   eqMarkers = [];
-  const list = document.getElementById('globeEqList'); list.innerHTML = '';
-  const cityList = document.getElementById('cityEqList'); cityList.innerHTML = '';
+
+  const list = document.getElementById('globeEqList');
+  if (list) list.innerHTML = '';
+  const cityList = document.getElementById('cityEqList');
+  if (cityList) cityList.innerHTML = '';
 
   // Filter if in India mode
-  const filtered = (currentGlobeMode === 'india' && currentIndiaZone !== 'ALL')
-    ? quakes.filter(q => q.zone === currentIndiaZone)
+  const filtered = (currentGlobeMode === 'india' && currentIndiaZone && currentIndiaZone !== 'ALL')
+    ? quakes.filter(q => q && q.zone === currentIndiaZone)
     : quakes;
 
-  filtered.forEach((q, i) => {
-    addGlobeMarker(q);
-    const zoneBadge = q.zone ? `<span class="dbadge ${q.zone === 'Zone V' ? 'collapse' : q.zone === 'Zone IV' ? 'extensive' : q.zone === 'Zone III' ? 'moderate' : 'slight'}" style="margin-left:6px;font-size:.55rem">${q.zone}</span>` : '';
-    const col = q.zone === 'Zone V' ? '#dc2626' : q.zone === 'Zone IV' ? '#f97316' : q.mag >= 7.5 ? '#f97316' : '#f59e0b';
+  (filtered || []).forEach((q, i) => {
+    if (!q || typeof q.lat !== 'number' || typeof q.lon !== 'number') return;
+    try {
+      addGlobeMarker(q);
+      const magVal = typeof q.mag === 'number' ? q.mag.toFixed(1) : (q.mag || '5.0');
+      const latVal = typeof q.lat === 'number' ? q.lat.toFixed(2) : '0';
+      const lonVal = typeof q.lon === 'number' ? q.lon.toFixed(2) : '0';
+      const depthVal = typeof q.depth === 'number' ? Math.round(q.depth) : 10;
+      const zoneBadge = q.zone ? `<span class="dbadge ${q.zone === 'Zone V' ? 'collapse' : q.zone === 'Zone IV' ? 'extensive' : q.zone === 'Zone III' ? 'moderate' : 'slight'}" style="margin-left:6px;font-size:.55rem">${q.zone}</span>` : '';
+      const col = q.zone === 'Zone V' ? '#dc2626' : q.zone === 'Zone IV' ? '#f97316' : q.mag >= 7.5 ? '#f97316' : '#f59e0b';
 
-    // Globe panel list item
-    const d1 = document.createElement('div'); d1.className = 'eq-globe-item' + (i === 0 ? ' sel' : '');
-    d1.innerHTML = `<div class="eq-r1">
-        <span><span class="eq-mag" style="color:${col}">M${q.mag.toFixed(1)}</span> ${zoneBadge}</span>
-        <span class="eq-yr">${q.yr}</span>
-      </div>
-      <div class="eq-place">${q.place}</div>
-      <div class="eq-loc">${q.lat.toFixed(2)}°N ${q.lon.toFixed(2)}°E · ${Math.round(q.depth)}km</div>`;
-    d1.onclick = () => {
-      document.querySelectorAll('.eq-globe-item').forEach(e => e.classList.remove('sel'));
-      d1.classList.add('sel'); flyToEarthquake(q);
-    };
-    list.appendChild(d1);
+      if (list) {
+        const d1 = document.createElement('div');
+        d1.className = 'eq-globe-item' + (i === 0 ? ' sel' : '');
+        d1.innerHTML = `<div class="eq-r1">
+            <span><span class="eq-mag" style="color:${col}">M${magVal}</span> ${zoneBadge}</span>
+            <span class="eq-yr">${q.yr || ''}</span>
+          </div>
+          <div class="eq-place">${q.place || 'Seismic Event'}</div>
+          <div class="eq-loc">${latVal}°N ${lonVal}°E · ${depthVal}km</div>`;
+        d1.onclick = () => {
+          document.querySelectorAll('.eq-globe-item').forEach(e => e.classList.remove('sel'));
+          d1.classList.add('sel');
+          flyToEarthquake(q);
+        };
+        list.appendChild(d1);
+      }
 
-    // City panel list item
-    const d2 = document.createElement('div'); d2.className = 'eq-item';
-    d2.innerHTML = `<div class="eqr1"><span class="eqmag" style="color:${col}">M${q.mag.toFixed(1)}</span><span class="eqyr">${q.yr}</span></div>
-      <div class="eqpl">${q.place}</div><div class="eqloc">${q.lat.toFixed(2)}°N ${q.lon.toFixed(2)}°E</div>`;
-    d2.onclick = () => {
-      document.querySelectorAll('.eq-item').forEach(e => e.classList.remove('sel'));
-      d2.classList.add('sel'); selectEQCity(q);
-    };
-    cityList.appendChild(d2);
+      if (cityList) {
+        const d2 = document.createElement('div');
+        d2.className = 'eq-item';
+        d2.innerHTML = `<div class="eqr1"><span class="eqmag" style="color:${col}">M${magVal}</span><span class="eqyr">${q.yr || ''}</span></div>
+          <div class="eqpl">${q.place || 'Seismic Event'}</div><div class="eqloc">${latVal}°N ${lonVal}°E</div>`;
+        d2.onclick = () => {
+          document.querySelectorAll('.eq-item').forEach(e => e.classList.remove('sel'));
+          d2.classList.add('sel');
+          selectEQCity(q);
+        };
+        cityList.appendChild(d2);
+      }
+    } catch(err) {
+      console.warn('Marker render error:', err);
+    }
   });
 
-  document.getElementById('gEqCount').textContent = filtered.length;
-  document.getElementById('gMaxMag').textContent = filtered.length ? 'M' + Math.max(...filtered.map(q => q.mag)).toFixed(1) : '—';
-  if (filtered.length && currentGlobeMode === 'india') {
-    // Optionally focus first item
+  const countEl = document.getElementById('gEqCount');
+  if (countEl) countEl.textContent = filtered ? filtered.length : 0;
+  const maxEl = document.getElementById('gMaxMag');
+  if (maxEl && filtered && filtered.length > 0) {
+    const validMags = filtered.map(q => typeof q.mag === 'number' ? q.mag : 0);
+    maxEl.textContent = 'M' + Math.max(...validMags).toFixed(1);
   }
 }
 
